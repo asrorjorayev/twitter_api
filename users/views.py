@@ -7,14 +7,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.validators import ValidationError
 from rest_framework.authtoken.models import Token
-from rest_framework import status
+from rest_framework import status,permissions
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User,Followers
-from django.contrib.auth.mixins import LoginRequiredMixin
+ 
      
 class LoginView(APIView):
-    permission_classes = (IsAuthenticated, )
-
+    permission_classes=(IsAuthenticated,)
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -27,6 +26,7 @@ class LoginView(APIView):
         refresh = RefreshToken.for_user(user)
         data = {
             'tabriklaymiz':'Muvaffaqiyatli login qildingiz',
+            "username":request.user.username,
             'refres': str(refresh),
             'access': str(refresh.access_token)
         }
@@ -57,41 +57,80 @@ class AllUsers(APIView):
     
 
 class FriendRequestAPIView(APIView):
-     
-
-    def post(self, request, id):
-        to_user = get_object_or_404(User, id=id)
+    permission_classes = (permissions.IsAuthenticated, )
+    def post(self, request):
+        to_user = User.objects.get(id=request.data['to_user'])
         from_user = request.user
+        follow_request = Followers.objects.filter(from_user=from_user).filter(to_user=to_user)
 
-        friend_request, created = Followers.objects.get_or_create(from_user=from_user, to_user=to_user)
-        if created:
-            message = 'Dostlik so\'rovi muvaffaqiyatli yuborildi!'
+        if not follow_request:
+            try:
+                Followers.objects.create(from_user=from_user, to_user=to_user)
+                data = {
+                    "success": True,
+                    "message": f"sorov yuborildi  {to_user} ga"
+                }
+            except:
+                data = {
+                    "success": False,
+                    "message": f" sorov yuborilmadi"
+                }
         else:
-            message = 'Dostlik so\'rovi avval yuborilgan'
-        
-        response_data = {
-            'success': True,
-            'message': message,
-             
-        }
-        return Response(response_data, status=status.HTTP_200_OK)
-    
+            data = {
+                "success": False,
+                "message": "Follow request already sent"
+            }
+        return Response(data)
+
 
 class MyNetworksAPIView( APIView):
     def get(self, request):
         networks = Followers.objects.filter(to_user=request.user, is_accepted=False)
         serializer = FollowersSerializers(networks, many=True)
         return Response(serializer.data)   
+
+
+class MyFollowRequestsApiView(APIView):
+    permission_classes = (IsAuthenticated, )
+
+    def get(self, request):
+        follow_requests = Followers.objects.filter(to_user=request.user, is_accepted=False)
+        serializer = FollowersSerializers(follow_requests, many=True)
+
+        if follow_requests:
+            data = serializer.data
+        else:
+            data = {
+                "success": False,
+                "message": "sizda mavjud emas"
+            }
+
+        return Response(data)
     
+
 class AcceptFriendRequestView(APIView):
-     
-    def post(self, request, id):
-        friend_request = get_object_or_404(Followers, id=id)
-        from_user = friend_request.from_user
+    permission_classes = (IsAuthenticated, )
 
-        main_user = request.user
-        main_user.friends.add(from_user)
+    def post(self, request):
+        id = request.data['follow_request_id']
+        try:
+            follow_request_user = Followers.objects.get(id=id)
+            from_user = follow_request_user.from_user
+            main_user = request.user
 
-        friend_request.delete()
+            follow_request_user.is_accepted = True
+            follow_request_user.save()
+            main_user.followers.add(from_user)
+            from_user.followers.add(main_user)
 
-        return Response({'message': 'Dostlik sorovi muvaffaqiyatli qabul qilindi'}, status=status.HTTP_200_OK)
+            data = {
+                "success": True,
+                "message": f"{from_user.username} is accepted!"
+            }
+        except:
+            data = {
+                'success': False,
+                'message': "Follow request user doesn't exist"
+            }
+        return Response(data)
+

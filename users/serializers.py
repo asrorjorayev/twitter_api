@@ -36,6 +36,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         return data
 
 class FollowersSerializers(serializers.ModelSerializer):
+    from_user = UserSerializer()
     class Meta():
         model=Followers
         fields=['from_user','to_user','is_accepted']
+        depth = 1

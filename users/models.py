@@ -23,6 +23,6 @@ class Followers(models.Model):
     is_accepted=models.BooleanField(default=False)
 
     def __str__(self):
-        return self.from_user.username
+        return f"{self.from_user} requested to {self.to_user}"
 
     
